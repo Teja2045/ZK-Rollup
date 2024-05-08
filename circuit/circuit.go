@@ -82,6 +82,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 		verifyAccountUpdated(api, circuit.ReceiverAccountsBefore[i], circuit.SenderAccountsBefore[i],
 			circuit.ReceiverAccountsAfter[i], circuit.SenderAccountsAfter[i], circuit.TransferTxs[i].Amount)
+
+		VerifySignature(api, circuit.TransferTxs[i], hFunc)
 	}
 	return nil
 }
@@ -107,12 +109,10 @@ func verifyAccountUpdated(api frontend.API,
 }
 
 // verify the signature
-func (circuit *Circuit) VerifySignature(api frontend.API, t TransferConstraints, hFunc mimc.MiMC) error {
+func VerifySignature(api frontend.API, t TransferConstraints, hFunc mimc.MiMC) error {
 
 	hFunc.Reset()
-
 	hFunc.Write(t.Nonce, t.Amount, t.SenderPubKey.A.X, t.SenderPubKey.A.Y, t.ReceiverPubKey.A.X, t.ReceiverPubKey.A.Y)
-
 	txHash := hFunc.Sum()
 
 	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)

@@ -1,6 +1,8 @@
 package circuit
 
 import (
+	"ZK-Rollup/account"
+
 	tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/accumulator/merkle"
@@ -30,6 +32,7 @@ type TransferConstraints struct {
 	Signature      eddsa.Signature
 }
 
+// A circuit that checks if a transaction is valid or not
 type Circuit struct {
 	SenderAccountsBefore   [BatchSize]AccountConstraints
 	ReceiverAccountsBefore [BatchSize]AccountConstraints
@@ -105,6 +108,50 @@ func verifyAccountUpdated(api frontend.API,
 	// check if the amount is added to the receiver
 	receiverAmountUpdated := api.Add(toBefore.Balance, amount)
 	api.AssertIsEqual(receiverAmountUpdated, toAfter.Balance)
+
+}
+
+func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, receiver account.Account) {
+	circuit.LeafReceiver[index] = sender.Index
+	circuit.LeafSender[index] = receiver.Index
+
+	circuit.SenderAccountsBefore[index].Balance = sender.Balance
+	circuit.SenderAccountsBefore[index].Index = sender.Index
+	circuit.SenderAccountsBefore[index].Nonce = sender.Nonce
+	circuit.SenderAccountsBefore[index].PubKey.A.X = sender.PubKey.A.X
+	circuit.SenderAccountsBefore[index].PubKey.A.Y = sender.PubKey.A.Y
+
+	circuit.ReceiverAccountsBefore[index].Balance = receiver.Balance
+	circuit.ReceiverAccountsBefore[index].Index = receiver.Index
+	circuit.ReceiverAccountsBefore[index].Nonce = receiver.Nonce
+	circuit.ReceiverAccountsBefore[index].PubKey.A.X = receiver.PubKey.A.X
+	circuit.ReceiverAccountsBefore[index].PubKey.A.Y = receiver.PubKey.A.Y
+
+	circuit.SenderPubKeys[index].A.X = sender.PubKey.A.X
+	circuit.SenderPubKeys[index].A.Y = sender.PubKey.A.Y
+	circuit.ReceiverPubKeys[index].A.X = sender.PubKey.A.X
+	circuit.ReceiverPubKeys[index].A.Y = sender.PubKey.A.Y
+
+}
+
+func (circuit *Circuit) SetAfterAccounts(index uint64, sender account.Account, receiver account.Account) {
+
+	circuit.SenderAccountsAfter[index].Balance = sender.Balance
+	circuit.SenderAccountsAfter[index].Index = sender.Index
+	circuit.SenderAccountsAfter[index].Nonce = sender.Nonce
+	circuit.SenderAccountsAfter[index].PubKey.A.X = sender.PubKey.A.X
+	circuit.SenderAccountsAfter[index].PubKey.A.Y = sender.PubKey.A.Y
+
+	circuit.ReceiverAccountsAfter[index].Balance = receiver.Balance
+	circuit.ReceiverAccountsAfter[index].Index = receiver.Index
+	circuit.ReceiverAccountsAfter[index].Nonce = receiver.Nonce
+	circuit.ReceiverAccountsAfter[index].PubKey.A.X = receiver.PubKey.A.X
+	circuit.ReceiverAccountsAfter[index].PubKey.A.Y = receiver.PubKey.A.Y
+
+	circuit.SenderPubKeys[index].A.X = sender.PubKey.A.X
+	circuit.SenderPubKeys[index].A.Y = sender.PubKey.A.Y
+	circuit.ReceiverPubKeys[index].A.X = sender.PubKey.A.X
+	circuit.ReceiverPubKeys[index].A.Y = sender.PubKey.A.Y
 
 }
 

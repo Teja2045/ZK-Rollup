@@ -9,10 +9,10 @@ import (
 )
 
 type Account struct {
-	index   uint64          // index in tree
-	nonce   uint64          // number of transactions from this account
-	balance fr.Element      // balance amount
-	pubKey  eddsa.PublicKey // 2 parts of pubkey :- X, Y
+	Index   uint64          // index in tree
+	Nonce   uint64          // number of transactions from this account
+	Balance fr.Element      // balance amount
+	PubKey  eddsa.PublicKey // 2 parts of pubkey :- X, Y
 }
 
 var (
@@ -23,11 +23,11 @@ var (
 )
 
 func (acc *Account) Reset() {
-	acc.index = 0
-	acc.nonce = 0
-	acc.balance.SetZero()
-	acc.pubKey.A.X.SetZero()
-	acc.pubKey.A.Y.SetZero()
+	acc.Index = 0
+	acc.Nonce = 0
+	acc.Balance.SetZero()
+	acc.PubKey.A.X.SetZero()
+	acc.PubKey.A.Y.SetZero()
 }
 
 func (acc *Account) Marshal() []byte {
@@ -36,18 +36,18 @@ func (acc *Account) Marshal() []byte {
 	// index is 64 bits i.e 8 bytes
 	// we have 32 bytes reserved for index part. So lets append 8 bytes at end to avoid conversion error
 	// 32 - 8 = 24
-	binary.BigEndian.PutUint64(res[24:], acc.index)
+	binary.BigEndian.PutUint64(res[24:], acc.Index)
 
 	// simiar with nonce
-	binary.BigEndian.PutUint64(res[56:], acc.nonce)
+	binary.BigEndian.PutUint64(res[56:], acc.Nonce)
 
-	buf := acc.balance.Bytes()
+	buf := acc.Balance.Bytes()
 	copy(res[64:], buf[:])
 
-	buf = acc.pubKey.A.Bytes()
+	buf = acc.PubKey.A.Bytes()
 	copy(res[96:], buf[:])
 
-	buf = acc.pubKey.A.Y.Bytes()
+	buf = acc.PubKey.A.Y.Bytes()
 	copy(res[128:], buf[:])
 
 	return res[:]
@@ -58,11 +58,11 @@ func UnMarshal(acc *Account, accBytes []byte) error {
 		return fmt.Errorf("invalid bytes: required %d bytes, but found %d bytes", AccountSizeInBytes, len(accBytes))
 	}
 
-	acc.index = binary.BigEndian.Uint64(accBytes[24:32])
-	acc.nonce = binary.BigEndian.Uint64(accBytes[56:64])
-	acc.balance.SetBytes(accBytes[64:96])
-	acc.pubKey.A.X.SetBytes(accBytes[96:128])
-	acc.pubKey.A.Y.SetBytes(accBytes[128:])
+	acc.Index = binary.BigEndian.Uint64(accBytes[24:32])
+	acc.Nonce = binary.BigEndian.Uint64(accBytes[56:64])
+	acc.Balance.SetBytes(accBytes[64:96])
+	acc.PubKey.A.X.SetBytes(accBytes[96:128])
+	acc.PubKey.A.Y.SetBytes(accBytes[128:])
 
 	return nil
 }

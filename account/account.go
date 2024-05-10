@@ -44,7 +44,7 @@ func (acc *Account) Marshal() []byte {
 	buf := acc.Balance.Bytes()
 	copy(res[64:], buf[:])
 
-	buf = acc.PubKey.A.Bytes()
+	buf = acc.PubKey.A.X.Bytes()
 	copy(res[96:], buf[:])
 
 	buf = acc.PubKey.A.Y.Bytes()

@@ -56,12 +56,34 @@ type Circuit struct {
 	RootHashesAfter  [BatchSize]frontend.Variable `gnark:",public"`
 }
 
+func NewCircuit() Circuit {
+	return Circuit{
+		SenderAccountsBefore:       [BatchSize]AccountConstraints{},
+		ReceiverAccountsBefore:     [BatchSize]AccountConstraints{},
+		SenderPubKeys:              [BatchSize]eddsa.PublicKey{},
+		SenderAccountsAfter:        [BatchSize]AccountConstraints{},
+		ReceiverAccountsAfter:      [BatchSize]AccountConstraints{},
+		ReceiverPubKeys:            [BatchSize]eddsa.PublicKey{},
+		TransferTxs:                [BatchSize]TransferConstraints{},
+		MerkleProofsReceiverBefore: [BatchSize]merkle.MerkleProof{},
+		MerkleProofsReceiverAfter:  [BatchSize]merkle.MerkleProof{},
+		MerkleProofsSenderBefore:   [BatchSize]merkle.MerkleProof{},
+		MerkleProofsSenderAfter:    [BatchSize]merkle.MerkleProof{},
+		LeafReceiver:               [BatchSize]frontend.Variable{},
+		LeafSender:                 [BatchSize]frontend.Variable{},
+		RootHashesBefore:           [BatchSize]frontend.Variable{},
+		RootHashesAfter:            [BatchSize]frontend.Variable{},
+	}
+}
+
 func (circuit *Circuit) Define(api frontend.API) error {
 
 	hFunc, err := mimc.NewMiMC(api)
 	if err != nil {
 		return err
 	}
+
+	circuit.allocateSlicesMerkleProofs()
 
 	for i := 0; i < BatchSize; i++ {
 
@@ -88,7 +110,20 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 		VerifySignature(api, circuit.TransferTxs[i], hFunc)
 	}
+
 	return nil
+}
+
+func (circuit *Circuit) allocateSlicesMerkleProofs() {
+
+	for i := 0; i < BatchSize; i++ {
+		// allocating slice for the Merkle paths
+		circuit.MerkleProofsReceiverBefore[i].Path = make([]frontend.Variable, depth)
+		circuit.MerkleProofsReceiverAfter[i].Path = make([]frontend.Variable, depth)
+		circuit.MerkleProofsSenderBefore[i].Path = make([]frontend.Variable, depth)
+		circuit.MerkleProofsSenderAfter[i].Path = make([]frontend.Variable, depth)
+	}
+
 }
 
 func verifyAccountUpdated(api frontend.API,
@@ -111,7 +146,7 @@ func verifyAccountUpdated(api frontend.API,
 
 }
 
-func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, receiver account.Account) {
+func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, receiver account.Account) Circuit {
 	circuit.LeafReceiver[index] = sender.Index
 	circuit.LeafSender[index] = receiver.Index
 
@@ -131,6 +166,8 @@ func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, 
 	circuit.SenderPubKeys[index].A.Y = sender.PubKey.A.Y
 	circuit.ReceiverPubKeys[index].A.X = sender.PubKey.A.X
 	circuit.ReceiverPubKeys[index].A.Y = sender.PubKey.A.Y
+
+	return *circuit
 
 }
 

@@ -11,11 +11,12 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 )
 
-func Verify(assignemnt *circuit.Circuit) {
-	circuit := circuit.NewCircuit()
+func Verify(assignemnt circuit.Circuit) {
+	var cir circuit.Circuit
 	//circuit := *assignemnt
+	cir.SetMerklePaths()
 
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &cir)
 	if err != nil {
 		fmt.Println("here0")
 		log.Fatal(err)
@@ -27,7 +28,7 @@ func Verify(assignemnt *circuit.Circuit) {
 		log.Fatal(err)
 	}
 
-	witness, err := frontend.NewWitness(assignemnt, ecc.BN254.ScalarField())
+	witness, err := frontend.NewWitness(&assignemnt, ecc.BN254.ScalarField())
 	if err != nil {
 		fmt.Println("her4")
 		log.Fatal(err)

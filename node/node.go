@@ -5,6 +5,7 @@ import (
 	"ZK-Rollup/circuit"
 	"ZK-Rollup/modules/transfer"
 	"ZK-Rollup/proofSystem"
+
 	"ZK-Rollup/signature"
 	"bytes"
 	"errors"
@@ -14,8 +15,8 @@ import (
 	"log/slog"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
-	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/accumulator/merkle"
 )
@@ -90,7 +91,7 @@ func (o *Node) ListenForTransfers() {
 			log.Fatal(err)
 		}
 
-		proofSystem.Verify(&o.witnesses)
+		proofSystem.Verify(o.witnesses)
 	}
 }
 
@@ -124,7 +125,10 @@ func (o *Node) UpdateState(t transfer.Transfer, numTransfer int) error {
 		return err
 	}
 
-	o.witnesses = o.witnesses.SetBeforeAccounts(uint64(numTransfer), sender, receiver)
+	// set before accounts  & pubkeys & leaf accounts
+	o.witnesses.SetBeforeAccounts(uint64(numTransfer), sender, receiver)
+
+	// set before accounts before merkle proofs & before merkle root
 	err = o.SetMerkleProofs(true, sender, receiver, uint64(numTransfer))
 	if err != nil {
 		slog.Error("unable to set merkle proofs")
@@ -136,14 +140,20 @@ func (o *Node) UpdateState(t transfer.Transfer, numTransfer int) error {
 		slog.Error("unable to get updated accounts")
 		return err
 	}
+
+	// update state
 	o.UpdateAccounts(senderAfter, receiverAfter)
+
+	// set after accounts
 	o.witnesses.SetAfterAccounts(uint64(numTransfer), senderAfter, receiverAfter)
 
+	// set after merkle proofs & after merkle roots
 	err = o.SetMerkleProofs(false, senderAfter, receiverAfter, uint64(numTransfer))
 	if err != nil {
-		return nil
+		return err
 	}
 
+	// set transfer contraints
 	o.SetTxns(uint64(numTransfer), t)
 
 	slog.Info("sender account balance before tx: " + sender.Balance.String())
@@ -158,13 +168,19 @@ func (o *Node) UpdateState(t transfer.Transfer, numTransfer int) error {
 }
 
 func (o *Node) SetTxns(numTransfer uint64, t transfer.Transfer) {
+	var frNonce fr.Element
+
+	// Convert uint64 to bytes
+	frNonce.SetUint64(t.Nonce)
 	o.witnesses.TransferTxs[numTransfer].Amount = t.Amount
-	o.witnesses.TransferTxs[numTransfer].Nonce = t.Nonce
+	o.witnesses.TransferTxs[numTransfer].Nonce = frNonce
 	o.witnesses.TransferTxs[numTransfer].SenderPubKey.A.X = t.SenderPubKey.A.X
 	o.witnesses.TransferTxs[numTransfer].SenderPubKey.A.Y = t.SenderPubKey.A.Y
 	o.witnesses.TransferTxs[numTransfer].ReceiverPubKey.A.X = t.ReceiverPubKey.A.X
 	o.witnesses.TransferTxs[numTransfer].ReceiverPubKey.A.Y = t.ReceiverPubKey.A.Y
-	o.witnesses.TransferTxs[numTransfer].Signature.Assign(twistededwards.BN254, t.Signature.Bytes())
+	o.witnesses.TransferTxs[numTransfer].Signature.R.X = t.Signature.R.X
+	o.witnesses.TransferTxs[numTransfer].Signature.R.Y = t.Signature.R.Y
+	o.witnesses.TransferTxs[numTransfer].Signature.S = t.Signature.S[:]
 }
 
 func (o *Node) UpdateAccounts(sender account.Account, receiver account.Account) {
@@ -193,6 +209,7 @@ func (o *Node) SetMerkleProofs(before bool, sender account.Account, receiver acc
 	if err != nil {
 		return err
 	}
+
 	slog.Info("sender inclusion proof is verified")
 
 	proof := GetMerkleProofFromBytes(merkleRootBefore, senderInclusionProof)
@@ -232,47 +249,6 @@ func (o *Node) SetMerkleProofs(before bool, sender account.Account, receiver acc
 
 }
 
-func VerifyAndGetUpdatedAccounts(
-	sender account.Account,
-	receiver account.Account,
-	t transfer.Transfer,
-	hFunc hash.Hash) (account.Account, account.Account, error) {
-
-	if sender.Balance.Cmp(&t.Amount) == -1 {
-		return account.Account{}, account.Account{}, errors.New("not enough balance")
-	}
-
-	sender.Balance = *sender.Balance.Sub(&sender.Balance, &t.Amount)
-	sender.Nonce++
-	receiver.Balance = *receiver.Balance.Add(&receiver.Balance, &t.Amount)
-
-	signed, err := signature.Verify(t.Message(hFunc), sender.PubKey, t.Signature.Bytes(), hFunc)
-	if err != nil {
-		return account.Account{}, account.Account{}, err
-	}
-	if !signed {
-		return account.Account{}, account.Account{}, errors.New("signature verification failed")
-
-	}
-	return sender, receiver, nil
-
-}
-
-func (o *Node) VerifyAndGetAccount(accountKey string) (account.Account, error) {
-	senderIndex, ok := o.AccountMap[accountKey]
-	if !ok {
-		return account.Account{}, errors.New("account doesn't exist")
-	}
-
-	senderAccount := o.ReadAccount(senderIndex)
-
-	if senderAccount.Index != senderIndex {
-		return account.Account{}, errors.New("account index mismatch")
-	}
-
-	return senderAccount, nil
-}
-
 func BuildProof(hFunc hash.Hash, data []byte, index uint64) ([]byte, [][]byte, uint64, error) {
 	var buf bytes.Buffer
 
@@ -300,4 +276,46 @@ func GetMerkleProofFromBytes(rootBytes []byte, proofBytes [][]byte) merkle.Merkl
 		merkleProof.Path[i] = proofBytes[i]
 	}
 	return merkleProof
+}
+
+func VerifyAndGetUpdatedAccounts(
+	sender account.Account,
+	receiver account.Account,
+	t transfer.Transfer,
+	hFunc hash.Hash) (account.Account, account.Account, error) {
+
+	if sender.Balance.Cmp(&t.Amount) == -1 {
+		return account.Account{}, account.Account{}, errors.New("not enough balance")
+	}
+
+	sender.Balance = *sender.Balance.Sub(&sender.Balance, &t.Amount)
+	sender.Nonce = sender.Nonce + 1
+	receiver.Balance = *receiver.Balance.Add(&receiver.Balance, &t.Amount)
+
+	signed, err := signature.Verify(t.Message(hFunc), sender.PubKey, t.Signature.Bytes(), hFunc)
+	if err != nil {
+		return account.Account{}, account.Account{}, err
+	}
+	if !signed {
+		return account.Account{}, account.Account{}, errors.New("signature verification failed")
+
+	}
+
+	return sender, receiver, nil
+
+}
+
+func (o *Node) VerifyAndGetAccount(accountKey string) (account.Account, error) {
+	senderIndex, ok := o.AccountMap[accountKey]
+	if !ok {
+		return account.Account{}, errors.New("account doesn't exist")
+	}
+
+	senderAccount := o.ReadAccount(senderIndex)
+
+	if senderAccount.Index != senderIndex {
+		return account.Account{}, errors.New("account index mismatch")
+	}
+
+	return senderAccount, nil
 }

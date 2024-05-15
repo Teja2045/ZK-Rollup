@@ -2,6 +2,7 @@ package circuit
 
 import (
 	"ZK-Rollup/account"
+	"fmt"
 
 	tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
@@ -13,7 +14,7 @@ import (
 
 const (
 	nbAccounts = 16 //number of account; 2 ^ 4 = 16
-	depth      = 5  // depth of merkle proof; above 4 + 1 for leaf
+	Depth      = 3  // depth of merkle proof; above 4 + 1 for leaf
 	BatchSize  = 1  // nbTrasfers to batch in one proof
 )
 
@@ -21,14 +22,14 @@ type AccountConstraints struct {
 	Index   frontend.Variable
 	Nonce   frontend.Variable
 	Balance frontend.Variable
-	PubKey  eddsa.PublicKey `gnark:"-"`
+	PubKey  eddsa.PublicKey
 }
 
 type TransferConstraints struct {
 	Amount         frontend.Variable
-	Nonce          frontend.Variable `gnark:"-"`
-	SenderPubKey   eddsa.PublicKey   `gnark:"-"`
-	ReceiverPubKey eddsa.PublicKey   `gnark:"-"`
+	Nonce          frontend.Variable
+	SenderPubKey   eddsa.PublicKey
+	ReceiverPubKey eddsa.PublicKey
 	Signature      eddsa.Signature
 }
 
@@ -58,21 +59,18 @@ type Circuit struct {
 
 func NewCircuit() Circuit {
 	return Circuit{
-		SenderAccountsBefore:       [BatchSize]AccountConstraints{},
-		ReceiverAccountsBefore:     [BatchSize]AccountConstraints{},
-		SenderPubKeys:              [BatchSize]eddsa.PublicKey{},
-		SenderAccountsAfter:        [BatchSize]AccountConstraints{},
-		ReceiverAccountsAfter:      [BatchSize]AccountConstraints{},
-		ReceiverPubKeys:            [BatchSize]eddsa.PublicKey{},
-		TransferTxs:                [BatchSize]TransferConstraints{},
-		MerkleProofsReceiverBefore: [BatchSize]merkle.MerkleProof{},
-		MerkleProofsReceiverAfter:  [BatchSize]merkle.MerkleProof{},
-		MerkleProofsSenderBefore:   [BatchSize]merkle.MerkleProof{},
-		MerkleProofsSenderAfter:    [BatchSize]merkle.MerkleProof{},
-		LeafReceiver:               [BatchSize]frontend.Variable{},
-		LeafSender:                 [BatchSize]frontend.Variable{},
-		RootHashesBefore:           [BatchSize]frontend.Variable{},
-		RootHashesAfter:            [BatchSize]frontend.Variable{},
+		SenderAccountsBefore:   [BatchSize]AccountConstraints{},
+		ReceiverAccountsBefore: [BatchSize]AccountConstraints{},
+		SenderPubKeys:          [BatchSize]eddsa.PublicKey{},
+		SenderAccountsAfter:    [BatchSize]AccountConstraints{},
+		ReceiverAccountsAfter:  [BatchSize]AccountConstraints{},
+		ReceiverPubKeys:        [BatchSize]eddsa.PublicKey{},
+		TransferTxs:            [BatchSize]TransferConstraints{},
+
+		LeafReceiver:     [BatchSize]frontend.Variable{},
+		LeafSender:       [BatchSize]frontend.Variable{},
+		RootHashesBefore: [BatchSize]frontend.Variable{},
+		RootHashesAfter:  [BatchSize]frontend.Variable{},
 	}
 }
 
@@ -83,14 +81,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	circuit.allocateSlicesMerkleProofs()
-
 	for i := 0; i < BatchSize; i++ {
 
 		// check if roothashes match
 		api.AssertIsEqual(circuit.RootHashesBefore[i], circuit.MerkleProofsReceiverBefore[i].RootHash)
 		api.AssertIsEqual(circuit.RootHashesBefore[i], circuit.MerkleProofsSenderBefore[i].RootHash)
-		api.AssertIsEqual(circuit.RootHashesAfter[i], circuit.MerkleProofsReceiverBefore[i].RootHash)
+		api.AssertIsEqual(circuit.RootHashesAfter[i], circuit.MerkleProofsReceiverAfter[i].RootHash)
 		api.AssertIsEqual(circuit.RootHashesAfter[i], circuit.MerkleProofsSenderAfter[i].RootHash)
 
 		// check if the index is correct
@@ -105,25 +101,16 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		circuit.MerkleProofsReceiverAfter[i].VerifyProof(api, &hFunc, circuit.LeafReceiver[i])
 		circuit.MerkleProofsSenderAfter[i].VerifyProof(api, &hFunc, circuit.LeafSender[i])
 
-		verifyAccountUpdated(api, circuit.ReceiverAccountsBefore[i], circuit.SenderAccountsBefore[i],
-			circuit.ReceiverAccountsAfter[i], circuit.SenderAccountsAfter[i], circuit.TransferTxs[i].Amount)
+		verifyAccountUpdated(api, circuit.SenderAccountsBefore[i], circuit.ReceiverAccountsBefore[i],
+			circuit.SenderAccountsAfter[i], circuit.ReceiverAccountsAfter[i], circuit.TransferTxs[i].Amount)
 
-		VerifySignature(api, circuit.TransferTxs[i], hFunc)
+		err := VerifySignature(api, circuit.TransferTxs[i], hFunc)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
-}
-
-func (circuit *Circuit) allocateSlicesMerkleProofs() {
-
-	for i := 0; i < BatchSize; i++ {
-		// allocating slice for the Merkle paths
-		circuit.MerkleProofsReceiverBefore[i].Path = make([]frontend.Variable, depth)
-		circuit.MerkleProofsReceiverAfter[i].Path = make([]frontend.Variable, depth)
-		circuit.MerkleProofsSenderBefore[i].Path = make([]frontend.Variable, depth)
-		circuit.MerkleProofsSenderAfter[i].Path = make([]frontend.Variable, depth)
-	}
-
 }
 
 func verifyAccountUpdated(api frontend.API,
@@ -137,8 +124,8 @@ func verifyAccountUpdated(api frontend.API,
 	api.AssertIsLessOrEqual(amount, fromBefore.Balance)
 
 	// check if the amount is deducted from sender
-	senderAmountUpdated := api.Add(fromBefore.Balance, amount)
-	api.AssertIsEqual(senderAmountUpdated, fromAfter.Balance)
+	senderAmountBeforeTx := api.Add(fromAfter.Balance, amount)
+	api.AssertIsEqual(senderAmountBeforeTx, fromBefore.Balance)
 
 	// check if the amount is added to the receiver
 	receiverAmountUpdated := api.Add(toBefore.Balance, amount)
@@ -146,9 +133,34 @@ func verifyAccountUpdated(api frontend.API,
 
 }
 
-func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, receiver account.Account) Circuit {
-	circuit.LeafReceiver[index] = sender.Index
-	circuit.LeafSender[index] = receiver.Index
+// verify the signature
+func VerifySignature(api frontend.API, t TransferConstraints, hFunc mimc.MiMC) error {
+
+	hFunc.Reset()
+	hFunc.Write(t.Nonce)
+	hFunc.Write(t.Amount)
+	hFunc.Write(t.SenderPubKey.A.X)
+	hFunc.Write(t.SenderPubKey.A.Y)
+	hFunc.Write(t.ReceiverPubKey.A.X)
+	hFunc.Write(t.ReceiverPubKey.A.Y)
+
+	txHash := hFunc.Sum()
+
+	//txHash := []byte{1}
+
+	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)
+	if err != nil {
+		return err
+	}
+
+	hFunc.Reset()
+
+	return eddsa.Verify(curve, t.Signature, txHash, t.SenderPubKey, &hFunc)
+}
+
+func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, receiver account.Account) {
+	circuit.LeafReceiver[index] = receiver.Index
+	circuit.LeafSender[index] = sender.Index
 
 	circuit.SenderAccountsBefore[index].Balance = sender.Balance
 	circuit.SenderAccountsBefore[index].Index = sender.Index
@@ -164,15 +176,14 @@ func (circuit *Circuit) SetBeforeAccounts(index uint64, sender account.Account, 
 
 	circuit.SenderPubKeys[index].A.X = sender.PubKey.A.X
 	circuit.SenderPubKeys[index].A.Y = sender.PubKey.A.Y
-	circuit.ReceiverPubKeys[index].A.X = sender.PubKey.A.X
-	circuit.ReceiverPubKeys[index].A.Y = sender.PubKey.A.Y
-
-	return *circuit
+	circuit.ReceiverPubKeys[index].A.X = receiver.PubKey.A.X
+	circuit.ReceiverPubKeys[index].A.Y = receiver.PubKey.A.Y
 
 }
 
 func (circuit *Circuit) SetAfterAccounts(index uint64, sender account.Account, receiver account.Account) {
 
+	fmt.Println("sender", &sender.Balance, sender.Index, sender.Nonce, &receiver.Balance)
 	circuit.SenderAccountsAfter[index].Balance = sender.Balance
 	circuit.SenderAccountsAfter[index].Index = sender.Index
 	circuit.SenderAccountsAfter[index].Nonce = sender.Nonce
@@ -185,26 +196,13 @@ func (circuit *Circuit) SetAfterAccounts(index uint64, sender account.Account, r
 	circuit.ReceiverAccountsAfter[index].PubKey.A.X = receiver.PubKey.A.X
 	circuit.ReceiverAccountsAfter[index].PubKey.A.Y = receiver.PubKey.A.Y
 
-	circuit.SenderPubKeys[index].A.X = sender.PubKey.A.X
-	circuit.SenderPubKeys[index].A.Y = sender.PubKey.A.Y
-	circuit.ReceiverPubKeys[index].A.X = sender.PubKey.A.X
-	circuit.ReceiverPubKeys[index].A.Y = sender.PubKey.A.Y
-
 }
 
-// verify the signature
-func VerifySignature(api frontend.API, t TransferConstraints, hFunc mimc.MiMC) error {
-
-	hFunc.Reset()
-	hFunc.Write(t.Nonce, t.Amount, t.SenderPubKey.A.X, t.SenderPubKey.A.Y, t.ReceiverPubKey.A.X, t.ReceiverPubKey.A.Y)
-	txHash := hFunc.Sum()
-
-	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)
-	if err != nil {
-		return err
+func (circuit *Circuit) SetMerklePaths() {
+	for i := 0; i < BatchSize; i++ {
+		circuit.MerkleProofsReceiverAfter[i].Path = make([]frontend.Variable, Depth)
+		circuit.MerkleProofsReceiverBefore[i].Path = make([]frontend.Variable, Depth)
+		circuit.MerkleProofsSenderAfter[i].Path = make([]frontend.Variable, Depth)
+		circuit.MerkleProofsSenderBefore[i].Path = make([]frontend.Variable, Depth)
 	}
-
-	hFunc.Reset()
-
-	return eddsa.Verify(curve, t.Signature, txHash, t.SenderPubKey, &hFunc)
 }

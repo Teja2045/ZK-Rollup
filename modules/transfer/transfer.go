@@ -2,7 +2,6 @@ package transfer
 
 import (
 	"ZK-Rollup/signature"
-	"encoding/binary"
 	"hash"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
@@ -38,12 +37,14 @@ func (t *Transfer) Sign(hFunc hash.Hash, privateKey eddsa.PrivateKey) eddsa.Sign
 }
 
 func (t *Transfer) Message(hFunc hash.Hash) []byte {
+
 	hFunc.Reset()
-	buf := make([]byte, 8)
+	var frNonce fr.Element
 
 	// Convert uint64 to bytes
-	binary.BigEndian.PutUint64(buf, t.Nonce)
-	hFunc.Write(buf)
+	frNonce.SetUint64(t.Nonce)
+	nonceBytes := frNonce.Bytes()
+	hFunc.Write(nonceBytes[:])
 
 	buf1 := t.Amount.Bytes()
 	hFunc.Write(buf1[:])
@@ -61,7 +62,9 @@ func (t *Transfer) Message(hFunc hash.Hash) []byte {
 	hFunc.Write(buf1[:])
 
 	hashSum := hFunc.Sum(nil)
+
 	return hashSum
+
 }
 
 func (t *Transfer) VerifySignature(hFunc hash.Hash) (bool, error) {

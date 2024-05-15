@@ -1,9 +1,10 @@
 package main
 
 import (
+	"ZK-Rollup/circuit"
 	"ZK-Rollup/node"
 )
 
 func main() {
-	node.StartNodeWithRandomData(4, 2)
+	node.StartNodeWithRandomData(circuit.NbAccounts, circuit.Depth)
 }

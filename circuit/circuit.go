@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	nbAccounts = 16 //number of account; 2 ^ 4 = 16
-	Depth      = 3  // depth of merkle proof; above 4 + 1 for leaf
-	BatchSize  = 1  // nbTrasfers to batch in one proof
+	NbAccounts = 16 //number of account; 2 ^ 4 = 16
+	// WARNING: Depth depends on NbAccounts, change it as per nbAccounts
+	Depth     = 5 // depth of merkle proof; above 4 + 1 for leaf
+	BatchSize = 1 // nbTrasfers to batch in one proof
 )
 
 type AccountConstraints struct {

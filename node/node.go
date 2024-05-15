@@ -37,6 +37,7 @@ func NewQueue(circuitBatchSize int) Queue {
 }
 
 type Node struct {
+	TxCount    uint64
 	State      []byte            // list of account bytes appended
 	StateHash  []byte            // hash of account bytes appended
 	AccountMap map[string]uint64 // pubkey to index map
@@ -72,6 +73,7 @@ func NewNode(nbAccounts int, data []byte) Node {
 	circuit := circuit.NewCircuit()
 
 	return Node{
+		TxCount:    0,
 		State:      state,
 		StateHash:  hashState,
 		nbAccounts: nbAccounts,
@@ -91,7 +93,8 @@ func (o *Node) ListenForTransfers() {
 			log.Fatal(err)
 		}
 
-		proofSystem.Verify(o.witnesses)
+		o.TxCount++
+		proofSystem.Verify(o.witnesses, o.TxCount)
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 )
 
-func Verify(assignemnt circuit.Circuit) {
+func Verify(assignemnt circuit.Circuit, txNumber uint64) {
 	var cir circuit.Circuit
 	//circuit := *assignemnt
 	cir.SetMerklePaths()
@@ -46,4 +46,8 @@ func Verify(assignemnt circuit.Circuit) {
 	}
 
 	groth16.Verify(proof, vk, publicWitness)
+
+	fmt.Println()
+	fmt.Println("---------------- Tx-", txNumber, "Zk Proof Verified! -------------------")
+	fmt.Println()
 }

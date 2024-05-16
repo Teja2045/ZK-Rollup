@@ -18,30 +18,25 @@ func Verify(assignemnt circuit.Circuit, txNumber uint64) {
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &cir)
 	if err != nil {
-		fmt.Println("here0")
 		log.Fatal(err)
 	}
 
 	pk, vk, err := groth16.Setup(ccs)
 	if err != nil {
-		fmt.Println("here")
 		log.Fatal(err)
 	}
 
 	witness, err := frontend.NewWitness(&assignemnt, ecc.BN254.ScalarField())
 	if err != nil {
-		fmt.Println("her4")
 		log.Fatal(err)
 	}
 	publicWitness, err := witness.Public()
 	if err != nil {
-		fmt.Println("her5")
 		log.Fatal(err)
 	}
 
 	proof, err := groth16.Prove(ccs, pk, witness)
 	if err != nil {
-		fmt.Println("here1")
 		log.Fatal(err)
 	}
 

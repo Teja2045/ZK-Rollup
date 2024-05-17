@@ -5,6 +5,7 @@ import (
 	"ZK-Rollup/circuit"
 	"ZK-Rollup/modules/transfer"
 	"ZK-Rollup/proofSystem"
+	"time"
 
 	"ZK-Rollup/signature"
 	"bytes"
@@ -23,16 +24,16 @@ import (
 
 var hFunc = mimc.NewMiMC()
 
-var BatchSize = 10
+var MaxTxBuffer = 10
 
 type Queue struct {
-	listTransfers chan transfer.Transfer
+	txChannel chan transfer.Transfer
 }
 
 func NewQueue(circuitBatchSize int) Queue {
 	resChan := make(chan transfer.Transfer, circuitBatchSize)
 	return Queue{
-		listTransfers: resChan,
+		txChannel: resChan,
 	}
 }
 
@@ -69,7 +70,7 @@ func NewNode(nbAccounts int, data []byte) Node {
 
 	}
 
-	queue := NewQueue(BatchSize)
+	queue := NewQueue(MaxTxBuffer)
 	circuit := circuit.NewCircuit()
 
 	return Node{
@@ -86,7 +87,8 @@ func NewNode(nbAccounts int, data []byte) Node {
 }
 
 func (o *Node) ListenForTransfers() {
-	for transfer := range o.queue.listTransfers {
+	for transfer := range o.queue.txChannel {
+		startTime := time.Now()
 		slog.Info("recieved transaction!")
 		err := o.UpdateState(transfer, 0)
 		if err != nil {
@@ -95,6 +97,10 @@ func (o *Node) ListenForTransfers() {
 
 		o.TxCount++
 		proofSystem.Verify(o.witnesses, o.TxCount)
+		timeInSeconds := time.Since(startTime).Seconds()
+		slog.Info(fmt.Sprintln("Time taken for complete transaction life cycle:", timeInSeconds, "seconds!"))
+		fmt.Println()
+		fmt.Println()
 	}
 }
 
@@ -159,10 +165,11 @@ func (o *Node) UpdateState(t transfer.Transfer, numTransfer int) error {
 	// set transfer contraints
 	o.SetTxns(uint64(numTransfer), t)
 
-	slog.Info("sender account balance before tx: " + sender.Balance.String())
-	slog.Info("sender account balance after tx: " + senderAfter.Balance.String())
-	slog.Info("receiver account balance before tx: " + receiver.Balance.String())
-	slog.Info("receiver account balance after tx: " + receiverAfter.Balance.String())
+	slog.Info(fmt.Sprintf("sender account-%d balance before tx: %s", sender.Index, sender.Balance.String()))
+	slog.Info(fmt.Sprintf("sender account-%d balance after tx: %s", sender.Index, senderAfter.Balance.String()))
+	slog.Info(fmt.Sprintf("receiver account-%d balance before tx: %s", receiver.Index, receiver.Balance.String()))
+	slog.Info(fmt.Sprintf("receiver account-%d balance after tx: %s", receiver.Index, receiverAfter.Balance.String()))
+
 	slog.Info("state updated successfully!!")
 
 	fmt.Println()
@@ -263,14 +270,6 @@ func BuildProof(hFunc hash.Hash, data []byte, index uint64) ([]byte, [][]byte, u
 	return merkletree.BuildReaderProof(&buf, hFunc, hFunc.Size(), index)
 }
 
-func VerifyProof(hFunc hash.Hash, root []byte, proof [][]byte, index uint64, numLeaves uint64) error {
-	verified := merkletree.VerifyProof(hFunc, root, proof, index, numLeaves)
-	if !verified {
-		return errors.New("inclusion proof verification failed")
-	}
-	return nil
-}
-
 func GetMerkleProofFromBytes(rootBytes []byte, proofBytes [][]byte) merkle.MerkleProof {
 	var merkleProof merkle.MerkleProof
 	merkleProof.RootHash = rootBytes
@@ -279,6 +278,29 @@ func GetMerkleProofFromBytes(rootBytes []byte, proofBytes [][]byte) merkle.Merkl
 		merkleProof.Path[i] = proofBytes[i]
 	}
 	return merkleProof
+}
+
+func VerifyProof(hFunc hash.Hash, root []byte, proof [][]byte, index uint64, numLeaves uint64) error {
+	verified := merkletree.VerifyProof(hFunc, root, proof, index, numLeaves)
+	if !verified {
+		return errors.New("inclusion proof verification failed")
+	}
+	return nil
+}
+
+func (o *Node) VerifyAndGetAccount(accountKey string) (account.Account, error) {
+	senderIndex, ok := o.AccountMap[accountKey]
+	if !ok {
+		return account.Account{}, errors.New("account doesn't exist")
+	}
+
+	senderAccount := o.ReadAccount(senderIndex)
+
+	if senderAccount.Index != senderIndex {
+		return account.Account{}, errors.New("account index mismatch")
+	}
+
+	return senderAccount, nil
 }
 
 func VerifyAndGetUpdatedAccounts(
@@ -306,19 +328,4 @@ func VerifyAndGetUpdatedAccounts(
 
 	return sender, receiver, nil
 
-}
-
-func (o *Node) VerifyAndGetAccount(accountKey string) (account.Account, error) {
-	senderIndex, ok := o.AccountMap[accountKey]
-	if !ok {
-		return account.Account{}, errors.New("account doesn't exist")
-	}
-
-	senderAccount := o.ReadAccount(senderIndex)
-
-	if senderAccount.Index != senderIndex {
-		return account.Account{}, errors.New("account index mismatch")
-	}
-
-	return senderAccount, nil
 }

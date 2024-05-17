@@ -4,6 +4,7 @@ import (
 	"ZK-Rollup/account"
 	"ZK-Rollup/modules/transfer"
 	"ZK-Rollup/signature"
+	"math/rand"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
@@ -43,17 +44,21 @@ func StartNodeWithRandomData(nbAccounts uint64, nbTransfers uint64) {
 	node := NewNode(int(nbAccounts), accountsBytes)
 
 	go node.ListenForTransfers()
-	go DoRandomTransfers(node, &accountsMap, nbTransfers)
+	go DoRandomTransfers(node, &accountsMap, nbTransfers, int(nbAccounts))
 
 	// blocking call
 	select {}
 
 }
 
-func DoRandomTransfers(node Node, accounts *map[uint64]SignatureAccount, numTransfers uint64) {
+func DoRandomTransfers(node Node, accounts *map[uint64]SignatureAccount, numTransfers uint64, numAccounts int) {
 	// make transactions from account one to account two
-	account1 := (*accounts)[0]
-	account2 := (*accounts)[1]
+
+	senderIndex := rand.Intn(numAccounts)
+	receiverIndex := rand.Intn(numAccounts)
+
+	account1 := (*accounts)[uint64(senderIndex)]
+	account2 := (*accounts)[uint64(receiverIndex)]
 
 	for i := uint64(0); i < numTransfers; i++ {
 
@@ -62,7 +67,7 @@ func DoRandomTransfers(node Node, accounts *map[uint64]SignatureAccount, numTran
 
 		// ok, err := transfer.VerifySignature(node.hFunc)
 
-		node.queue.listTransfers <- transfer
+		node.queue.txChannel <- transfer
 
 	}
 }

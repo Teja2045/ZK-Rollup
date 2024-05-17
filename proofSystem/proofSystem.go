@@ -42,15 +42,15 @@ func Verify(assignemnt circuit.Circuit, txNumber uint64) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	timeInSeconds := time.Since(startTime).Seconds()
-	fmt.Println("prover time:", timeInSeconds, "seconds")
+	timeInSeconds := time.Since(startTime).Milliseconds()
+	fmt.Println("prover time:", timeInSeconds, "milliseconds")
 
 	startTime = time.Now()
 	groth16.Verify(proof, vk, publicWitness)
-	timeInSeconds = time.Since(startTime).Seconds()
-	fmt.Println("verifier time:", timeInSeconds, "seconds")
-	time := time.Since(start).Seconds()
-	fmt.Println("complete proof time (including setup):", time, "seconds")
+	timeInSeconds = time.Since(startTime).Milliseconds()
+	fmt.Println("verifier time:", timeInSeconds, "millseconds")
+	time := time.Since(start).Milliseconds()
+	fmt.Println("complete proof time (including setup):", time, "millsecods")
 	fmt.Println()
 	fmt.Println("---------------- Tx-", txNumber, "Zk Proof Verified! -------------------")
 }

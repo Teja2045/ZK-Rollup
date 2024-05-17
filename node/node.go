@@ -90,12 +90,19 @@ func (o *Node) ListenForTransfers() {
 	for transfer := range o.queue.txChannel {
 		startTime := time.Now()
 		slog.Info("recieved transaction!")
+
+		// TODO: check tx before updating state
+		// update state
 		err := o.UpdateState(transfer, 0)
 		if err != nil {
+			// TODO: handle gracefully
 			log.Fatal(err)
 		}
 
 		o.TxCount++
+
+		// TODO: indendent Prover node and Verifier Node
+		// generate Zk-proof and Verify the proof
 		proofSystem.Verify(o.witnesses, o.TxCount)
 		timeInSeconds := time.Since(startTime).Seconds()
 		slog.Info(fmt.Sprintln("Time taken for complete transaction life cycle:", timeInSeconds, "seconds!"))
@@ -104,6 +111,7 @@ func (o *Node) ListenForTransfers() {
 	}
 }
 
+// Read Account from state (byte data)
 func (o *Node) ReadAccount(i uint64) account.Account {
 	accountBytes := o.State[account.AccountSizeInBytes*int(i) : (int(i)+1)*account.AccountSizeInBytes]
 	var acc account.Account
@@ -113,6 +121,7 @@ func (o *Node) ReadAccount(i uint64) account.Account {
 	return acc
 }
 
+// update state + build witness of zk circuit
 func (o *Node) UpdateState(t transfer.Transfer, numTransfer int) error {
 
 	slog.Info("updating state...")
